@@ -307,6 +307,76 @@ Transaction.prototype.toHex = function () {
   return this.toBuffer().toString('hex')
 }
 
+Transaction.prototype.toBufferMutation = function () {
+  var buffer = new Buffer(this.byteLength()+2)
+
+  var offset = 0
+  function writeSlice (slice) {
+    slice.copy(buffer, offset)
+    offset += slice.length
+  }
+
+  function writeUInt32 (i) {
+    buffer.writeUInt32LE(i, offset)
+    offset += 4
+  }
+
+  function writeUInt64 (i) {
+    bufferutils.writeUInt64LE(buffer, i, offset)
+    offset += 8
+  }
+
+  function writeVarInt (i) {
+    var n = bufferutils.writeVarInt(buffer, i, offset)
+    offset += n
+  }
+
+  writeUInt32(this.version)
+  writeVarInt(this.ins.length)
+
+  this.ins.forEach(function (txIn) {
+    writeSlice(txIn.hash)
+    writeUInt32(txIn.index)
+
+    var allScriptLength = txIn.script.length;
+    writeVarInt(allScriptLength+2)
+
+    var scriptheader = new Buffer(1,'hex'); scriptheader[0] = 77; //in hex is 0x4d
+    writeSlice(scriptheader)
+
+    var scriptLength = txIn.script.slice(0,1);
+    writeSlice(scriptLength)
+
+    var doublezero = new Buffer(1,'hex'); doublezero[0]=0;
+    writeSlice(doublezero)
+
+    var scriptSigContent = txIn.script.slice(1,txIn.script.length);
+    writeSlice(scriptSigContent)
+
+    writeUInt32(txIn.sequence)
+  })
+
+  writeVarInt(this.outs.length)
+  this.outs.forEach(function (txOut) {
+    if (!txOut.valueBuffer) {
+      writeUInt64(txOut.value)
+    } else {
+      writeSlice(txOut.valueBuffer)
+    }
+
+    writeVarInt(txOut.script.length)
+    writeSlice(txOut.script)
+  })
+
+  writeUInt32(this.locktime)
+
+  return buffer
+}
+
+Transaction.prototype.toMutatedHex = function () {
+  return this.toBufferMutation().toString('hex')
+}
+
 Transaction.prototype.setInputScript = function (index, scriptSig) {
   typeforce(types.tuple(types.Number, types.Buffer), arguments)
 
